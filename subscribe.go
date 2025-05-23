@@ -1,3 +1,4 @@
+// Copyright 2024 Marius Wilms. All rights reserved.
 // Copyright 2020 Marius Wilms, Christoph Labacher. All rights reserved.
 // Copyright 2018 Atelier Disko. All rights reserved.
 //
@@ -7,11 +8,13 @@
 package bus
 
 import (
-	"log"
-	"math/rand"
-	"path/filepath"
+	"regexp"
 	"sync"
+	"sync/atomic"
 )
+
+// Subscriber is a global counter for generating unique subscriber IDs.
+var subscriberId atomic.Uint64
 
 type Subscriber struct {
 	receive chan<- *Message
@@ -31,42 +34,42 @@ type Subscribable struct {
 	// A map of channels currently subscribed to changes. Once we
 	// receive a message from the tree we fan it out to all. Once a
 	// channel is detected to be closed, we remove it.
-	subscribed map[int]*Subscriber
+	subscribed map[uint64]*Subscriber
 }
 
-func (s *Subscribable) NotifyAll(m *Message) {
+func (s *Subscribable) NotifyAll(msg *Message) {
 	s.RLock()
 	defer s.RUnlock()
 
 	for id, sub := range s.subscribed {
-		matched, _ := filepath.Match(sub.topic, m.Topic)
+		matched, _ := regexp.MatchString(sub.topic, msg.Topic)
 		if !matched {
 			continue
 		}
-		log.Printf("Notifying subscriber about %s...", m)
+		debugf("Bus: notify %s", msg.Id)
 
 		select {
-		case sub.receive <- m:
+		case sub.receive <- msg:
 			// Subscriber received.
 		default:
-			log.Printf("Subscriber %d cannot receive, buffer full", id)
+			debugf("Bus: buffer of subscriber %s full, not delivered", id)
 		}
 	}
 }
 
-// Subscribe to a given topic. The topic may contain wildcard
-// characters ("*"). Use "*" to subscribe to all messages.
-func (s *Subscribable) Subscribe(topic string) (int, <-chan *Message) {
-	log.Printf("Subscribing to topic %s...", topic)
+// Subscribe to a given topic. The topic name is interpreted as a
+// regular expression.
+func (s *Subscribable) Subscribe(topic string) (uint64, <-chan *Message) {
+	debugf("Bus: subscribe '%s'", topic)
 
 	s.Lock()
 	defer s.Unlock()
 
-	id := rand.Int()
+	id := subscriberId.Add(1)
 	ch := make(chan *Message, 10)
 
 	if s.subscribed == nil {
-		s.subscribed = make(map[int]*Subscriber, 0)
+		s.subscribed = make(map[uint64]*Subscriber, 0)
 	}
 	s.subscribed[id] = &Subscriber{receive: ch, topic: topic}
 	return id, ch
@@ -76,29 +79,31 @@ func (s *Subscribable) Subscribe(topic string) (int, <-chan *Message) {
 // given topic. Returns a quit chanel that can be used to stop the go
 // routine, that runs the handler.
 func (s *Subscribable) SubscribeFunc(topic string, fn func() error) chan bool {
-	return s.SubscribeFuncWithMessage(topic, func(m *Message) error {
+	return s.SubscribeFuncWithMessage(topic, func(msg *Message) error {
 		return fn()
 	})
 }
 
+// SubscribeFuncWithMessage registers a handler func similar to
+// SubscribeFunc, but that handler also receives the full Message.
 func (s *Subscribable) SubscribeFuncWithMessage(topic string, fn func(*Message) error) chan bool {
 	done := make(chan bool)
 	go func() {
-		id, messages := s.Subscribe(topic)
+		id, msgs := s.Subscribe(topic)
 
 		for {
 			select {
-			case m, ok := <-messages:
+			case msg, ok := <-msgs:
 				if !ok {
-					log.Print("Stopping subscriber (channel closed)...")
+					debug("Stopping subscriber (channel closed)...")
 					s.Unsubscribe(id)
 					return
 				}
-				if err := fn(m); err != nil {
-					log.Printf("Failed to run subscriber to %s: %s", topic, err)
+				if err := fn(msg); err != nil {
+					debugf("Failed to run subscriber to %s: %s", topic, err)
 				}
 			case <-done:
-				log.Print("Stopping subscriber (received quit)...")
+				debug("Stopping subscriber (received quit)...")
 				s.Unsubscribe(id)
 				return
 			}
@@ -107,7 +112,7 @@ func (s *Subscribable) SubscribeFuncWithMessage(topic string, fn func(*Message) 
 	return done
 }
 
-func (s *Subscribable) Unsubscribe(id int) {
+func (s *Subscribable) Unsubscribe(id uint64) {
 	s.Lock()
 	defer s.Unlock()
 

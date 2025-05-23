@@ -1,3 +1,4 @@
+// Copyright 2024 Marius Wilms. All rights reserved.
 // Copyright 2020 Marius Wilms, Christoph Labacher. All rights reserved.
 // Copyright 2018 Atelier Disko. All rights reserved.
 //
@@ -8,15 +9,17 @@ package bus
 
 import (
 	"fmt"
-	"log"
 )
 
+const TopicSeparator string = ":"
+const MaxPendingMessages int = 10
+
 func NewBroker() (*Broker, error) {
-	log.Print("Initializing message broker...")
+	debug("Initializing message broker...")
 
 	b := &Broker{
 		Subscribable: &Subscribable{},
-		incoming:     make(chan *Message, 10),
+		incoming:     make(chan *Message, MaxPendingMessages),
 		done:         make(chan bool),
 	}
 	return b, b.Open()
@@ -38,10 +41,10 @@ func (b *Broker) Open() error {
 	go func() {
 		for {
 			select {
-			case m := <-b.incoming:
-				b.NotifyAll(m)
+			case msg := <-b.incoming:
+				b.NotifyAll(msg)
 			case <-b.done:
-				log.Print("Closing message broker (received quit)...")
+				debug("Closing message broker (received quit)...")
 				return
 			}
 		}
@@ -55,32 +58,53 @@ func (b *Broker) Close() error {
 	return nil
 }
 
-func (b *Broker) Accept(topic string, text string) bool {
-	return b.AcceptMessage(NewMessage(topic, text))
+// Accept a message for fan-out. Will never block. When the buffer is
+// full the message will be discarded and not delivered.
+func (b *Broker) Accept(topic string, data interface{}) (bool, uint64) {
+	msg := &Message{
+		Id:    messageId.Add(1),
+		Topic: topic,
+		Data:  data,
+	}
+	return b.accept(msg)
 }
 
-// Accept a message for fan-out. Will never block. When the
-// buffer is full the message will be discarded and not delivered.
-func (b *Broker) AcceptMessage(m *Message) (ok bool) {
-	log.Printf("Accepting %s...", m)
-
+func (b *Broker) accept(msg *Message) (ok bool, id uint64) {
 	select {
-	case b.incoming <- m:
+	case b.incoming <- msg:
+		debugf("Bus: accept %s '%s'", msg.Id, msg.Topic)
 		ok = true
 	default:
-		log.Printf("Message buffer full, discarded: %s", m)
+		debugf("Bus: buffer full, discarded %s", msg.Id)
 		ok = false
 	}
-	return
+	return ok, msg.Id
 }
 
-// Connect will pass a subscribable messages through into this broker.
+// Connect will pass a subscribable messages through into this broker. The ID of the message
+// will stay the same, but the topic will be changed using the provided namespace.
 func (b *Broker) Connect(o *Subscribable, ns string) chan bool {
-	log.Printf("Connecting broker onto namespace %s...", ns)
+	debugf("Bus: connect onto '%s'", ns)
 
-	return o.SubscribeFuncWithMessage("*", func(m *Message) error {
-		log.Printf("Receiving message from connected broker and pushing into namespace %s...", ns)
-		b.Accept(fmt.Sprintf("%s.%s", ns, m.Topic), m.Text)
+	return o.SubscribeFuncWithMessage(`.*`, func(msg *Message) error {
+		debugf("Bus: forward %s => '%s'", msg.Id, ns)
+
+		var topic string
+		if ns != "" {
+			topic = fmt.Sprintf("%s%s%s", ns, TopicSeparator, msg.Topic)
+		} else {
+			topic = msg.Topic
+		}
+
+		// Create a new message, as we cannot change the passed by
+		// reference original message without changing the message for
+		// other subscribers.
+		fwd := &Message{
+			Id:    msg.Id,
+			Topic: topic,
+			Data:  msg.Data,
+		}
+		b.accept(fwd)
 		return nil
 	})
 }

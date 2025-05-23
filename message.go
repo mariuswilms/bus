@@ -1,3 +1,4 @@
+// Copyright 2024 Marius Wilms. All rights reserved.
 // Copyright 2020 Marius Wilms, Christoph Labacher. All rights reserved.
 // Copyright 2018 Atelier Disko. All rights reserved.
 //
@@ -8,23 +9,27 @@ package bus
 
 import (
 	"fmt"
-	"math/rand"
+	"sync/atomic"
 )
 
-func NewMessage(topic string, text string) *Message {
-	return &Message{
-		ID:    rand.Int(),
-		Topic: topic,
-		Text:  text,
-	}
-}
+const MaxCallDepth int = 10
+
+// messageId is a global counter for generating unique message IDs.
+var messageId atomic.Uint64
 
 type Message struct {
-	ID    int
+	// An unique Id, the message can be identified by. Messages from
+	// multiple brokers can be mixed together and still be identified.
+	Id uint64
+
+	// Topic name, used by subscribers when they want to listen to a
+	// specific subset of messages going through the broker.
 	Topic string
-	Text  string
+
+	// Data, arbitrary additional data the message can transport.
+	Data any
 }
 
-func (m *Message) String() string {
-	return fmt.Sprintf("message (topic: %s, text: %s)", m.Topic, m.Text)
+func (msg *Message) String() string {
+	return fmt.Sprintf("%s (%s)", msg.Id, msg.Topic)
 }
