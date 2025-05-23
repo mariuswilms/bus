@@ -25,7 +25,7 @@ func main() {
     br := bus.NewBroker(ctx)
 
     ha := NewHomeAssistantClient("...")
-    presence := &PresenceDetector{br}
+    presence := &PresenceDetector{Broker: br}
 
     // Receive published messages on a channel.
     _, ch := presence.Subscribe("changed")
@@ -49,13 +49,13 @@ func main() {
     br1 := bus.NewBroker(ctx) 
     br2 := bus.NewBroker(ctx)
 
-    br1.Publish("foo", "Hello from br1")
-    br2.Publish("bar", "Hello from br2")
+    br1.Accept("foo", "Hello from br1")
+    br2.Accept("bar", "Hello from br2")
 
     main.Connect(ctx, br1, "br1")
     main.Connect(ctx, br2, "br2")
 
-    main.SubscribeFn(ctx, "br1:*", func(ev Event) {
+    main.SubscribeFn(ctx, "br1:.*", func(msg Message) {
         // When an event is published on br1 to the "foo" topic, it will be received here
         // as "br1:foo".
     })

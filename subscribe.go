@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 )
 
-// Subscriber is a global counter for generating unique subscriber IDs.
+// subscriberID is a global counter for generating unique subscriber IDs.
 var subscriberId atomic.Uint64
 
 type Subscriber struct {
@@ -47,13 +47,13 @@ func (s *Subscribable) NotifyAll(msg *Message) {
 		if !matched {
 			continue
 		}
-		debugf("Bus: notify %s", msg.Id)
+		debugf("Bus: notify %d", msg.Id)
 
 		select {
 		case sub.receive <- msg:
 			// Subscriber received.
 		default:
-			debugf("Bus: buffer of subscriber %s full, not delivered", id)
+			debugf("Bus: buffer of subscriber %d full, not delivered", id)
 		}
 	}
 }
