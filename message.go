@@ -31,5 +31,5 @@ type Message struct {
 }
 
 func (msg *Message) String() string {
-	return fmt.Sprintf("%s (%s)", msg.Id, msg.Topic)
+	return fmt.Sprintf("%d (%s)", msg.Id, msg.Topic)
 }

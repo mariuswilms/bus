@@ -8,21 +8,33 @@
 package bus
 
 import (
+	"context"
 	"fmt"
 )
 
 const TopicSeparator string = ":"
 const MaxPendingMessages int = 10
 
-func NewBroker() (*Broker, error) {
-	debug("Initializing message broker...")
-
+func NewBroker(ctx context.Context) *Broker {
 	b := &Broker{
 		Subscribable: &Subscribable{},
 		incoming:     make(chan *Message, MaxPendingMessages),
-		done:         make(chan bool),
 	}
-	return b, b.Open()
+
+	go func() {
+		for {
+			select {
+			case msg := <-b.incoming:
+				b.NotifyAll(msg)
+			case <-ctx.Done():
+				debug("Closing message broker (received quit)...")
+				b.UnsubscribeAll()
+				return
+			}
+		}
+	}()
+
+	return b
 }
 
 // Broker is the main event bus that services inside the DSK
@@ -32,30 +44,6 @@ type Broker struct {
 
 	// Incoming messages are sent here.
 	incoming chan *Message
-
-	// Quit channel, receiving true, when de-initialized.
-	done chan bool
-}
-
-func (b *Broker) Open() error {
-	go func() {
-		for {
-			select {
-			case msg := <-b.incoming:
-				b.NotifyAll(msg)
-			case <-b.done:
-				debug("Closing message broker (received quit)...")
-				return
-			}
-		}
-	}()
-	return nil
-}
-
-func (b *Broker) Close() error {
-	b.done <- true
-	b.UnsubscribeAll()
-	return nil
 }
 
 // Accept a message for fan-out. Will never block. When the buffer is
@@ -72,10 +60,10 @@ func (b *Broker) Accept(topic string, data interface{}) (bool, uint64) {
 func (b *Broker) accept(msg *Message) (ok bool, id uint64) {
 	select {
 	case b.incoming <- msg:
-		debugf("Bus: accept %s '%s'", msg.Id, msg.Topic)
+		debugf("Bus: accept %d '%s'", msg.Id, msg.Topic)
 		ok = true
 	default:
-		debugf("Bus: buffer full, discarded %s", msg.Id)
+		debugf("Bus: buffer full, discarded %d", msg.Id)
 		ok = false
 	}
 	return ok, msg.Id
@@ -83,11 +71,11 @@ func (b *Broker) accept(msg *Message) (ok bool, id uint64) {
 
 // Connect will pass a subscribable messages through into this broker. The ID of the message
 // will stay the same, but the topic will be changed using the provided namespace.
-func (b *Broker) Connect(o *Subscribable, ns string) chan bool {
+func (b *Broker) Connect(ctx context.Context, o *Subscribable, ns string) {
 	debugf("Bus: connect onto '%s'", ns)
 
-	return o.SubscribeFuncWithMessage(`.*`, func(msg *Message) error {
-		debugf("Bus: forward %s => '%s'", msg.Id, ns)
+	o.SubscribeFn(ctx, `.*`, func(msg *Message) {
+		debugf("Bus: forward %d => '%s'", msg.Id, ns)
 
 		var topic string
 		if ns != "" {
@@ -105,6 +93,5 @@ func (b *Broker) Connect(o *Subscribable, ns string) chan bool {
 			Data:  msg.Data,
 		}
 		b.accept(fwd)
-		return nil
 	})
 }

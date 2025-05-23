@@ -11,7 +11,7 @@ import (
 )
 
 func isDebugMode() bool {
-	return os.Getenv("GOBUS_DEBUG") == "y"
+	return os.Getenv("BUS_DEBUG") == "y"
 }
 
 func debug(v ...interface{}) {

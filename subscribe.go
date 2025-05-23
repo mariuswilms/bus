@@ -8,6 +8,7 @@
 package bus
 
 import (
+	"context"
 	"regexp"
 	"sync"
 	"sync/atomic"
@@ -75,19 +76,9 @@ func (s *Subscribable) Subscribe(topic string) (uint64, <-chan *Message) {
 	return id, ch
 }
 
-// SubscribeFunc registers a handler func that is invoked on the
-// given topic. Returns a quit chanel that can be used to stop the go
-// routine, that runs the handler.
-func (s *Subscribable) SubscribeFunc(topic string, fn func() error) chan bool {
-	return s.SubscribeFuncWithMessage(topic, func(msg *Message) error {
-		return fn()
-	})
-}
-
-// SubscribeFuncWithMessage registers a handler func similar to
-// SubscribeFunc, but that handler also receives the full Message.
-func (s *Subscribable) SubscribeFuncWithMessage(topic string, fn func(*Message) error) chan bool {
-	done := make(chan bool)
+// SubscribeFn registers a handler func that is invoked when receiving messages
+// on the given topic.
+func (s *Subscribable) SubscribeFn(ctx context.Context, topic string, fn func(*Message)) {
 	go func() {
 		id, msgs := s.Subscribe(topic)
 
@@ -99,19 +90,17 @@ func (s *Subscribable) SubscribeFuncWithMessage(topic string, fn func(*Message) 
 					s.Unsubscribe(id)
 					return
 				}
-				if err := fn(msg); err != nil {
-					debugf("Failed to run subscriber to %s: %s", topic, err)
-				}
-			case <-done:
+				fn(msg)
+			case <-ctx.Done():
 				debug("Stopping subscriber (received quit)...")
 				s.Unsubscribe(id)
 				return
 			}
 		}
 	}()
-	return done
 }
 
+// Unsubscribe a subscriber by its ID.
 func (s *Subscribable) Unsubscribe(id uint64) {
 	s.Lock()
 	defer s.Unlock()
@@ -122,6 +111,7 @@ func (s *Subscribable) Unsubscribe(id uint64) {
 	}
 }
 
+// UnsubscribeAll unsubscribes all subscribers.
 func (s *Subscribable) UnsubscribeAll() {
 	s.Lock()
 	defer s.Unlock()
