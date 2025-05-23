@@ -33,7 +33,7 @@ func main() {
         ha.SendEvent("presence.changed", msg.Data)
     }
 
-    // Alternatively use callback style.
+    // Alternatively use a callback style.
     presence.SubscribeFn(ctx, "changed", func(msg Message) {
         ha.SendEvent("presence.changed", msg.Data)
     })
@@ -49,8 +49,8 @@ func main() {
     br1 := bus.NewBroker(ctx) 
     br2 := bus.NewBroker(ctx)
 
-    br1.Accept("foo", "Hello from br1")
-    br2.Accept("bar", "Hello from br2")
+    br1.Publish("foo", "Hello from br1")
+    br2.Publish("bar", "Hello from br2")
 
     main.Connect(ctx, br1, "br1")
     main.Connect(ctx, br2, "br2")

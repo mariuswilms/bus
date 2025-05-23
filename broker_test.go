@@ -15,7 +15,7 @@ func TestBrokerPubSub(t *testing.T) {
 	b := NewBroker(context.Background())
 
 	_, msgs := b.Subscribe("athome1")
-	b.Accept("athome1", "mydata")
+	b.Publish("athome1", "mydata")
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -39,7 +39,7 @@ func TestBrokerEmbedding(t *testing.T) {
 	}
 
 	_, msgs := presence.Subscribe("athome")
-	presence.Accept("athome", "mydata")
+	presence.Publish("athome", "mydata")
 	time.Sleep(100 * time.Millisecond)
 
 	select {

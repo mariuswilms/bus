@@ -46,9 +46,9 @@ type Broker struct {
 	incoming chan *Message
 }
 
-// Accept a message for fan-out. Will never block. When the buffer is
+// Publish a message for fan-out. Will never block. When the buffer is
 // full the message will be discarded and not delivered.
-func (b *Broker) Accept(topic string, data interface{}) (bool, uint64) {
+func (b *Broker) Publish(topic string, data interface{}) (bool, uint64) {
 	msg := &Message{
 		Id:    messageId.Add(1),
 		Topic: topic,
