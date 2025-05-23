@@ -19,7 +19,7 @@ const MaxPendingMessages int = 10
 
 func NewBroker(ctx context.Context) *Broker {
 	b := &Broker{
-		incoming: make(chan *Message, MaxPendingMessages),
+		incoming: make(chan Message, MaxPendingMessages),
 	}
 
 	go func() {
@@ -42,13 +42,13 @@ func NewBroker(ctx context.Context) *Broker {
 // backend subscribe to.
 type Broker struct {
 	subscribed sync.Map
-	incoming   chan *Message
+	incoming   chan Message
 }
 
 // Publish a message for fan-out. Will never block. When the buffer is
 // full the message will be discarded and not delivered.
 func (b *Broker) Publish(topic string, data interface{}) (bool, uint64) {
-	msg := &Message{
+	msg := Message{
 		Id:    messageId.Add(1),
 		Topic: topic,
 		Data:  data,
@@ -56,7 +56,7 @@ func (b *Broker) Publish(topic string, data interface{}) (bool, uint64) {
 	return b.accept(msg)
 }
 
-func (b *Broker) accept(msg *Message) (ok bool, id uint64) {
+func (b *Broker) accept(msg Message) (ok bool, id uint64) {
 	select {
 	case b.incoming <- msg:
 		debugf("Bus: accept %d '%s'", msg.Id, msg.Topic)
@@ -68,7 +68,7 @@ func (b *Broker) accept(msg *Message) (ok bool, id uint64) {
 	return ok, msg.Id
 }
 
-func (b *Broker) NotifyAll(msg *Message) {
+func (b *Broker) NotifyAll(msg Message) {
 	b.subscribed.Range(func(key, value interface{}) bool {
 		sub := value.(*Subscriber)
 		matched, _ := regexp.MatchString(sub.topic, msg.Topic)
@@ -87,17 +87,17 @@ func (b *Broker) NotifyAll(msg *Message) {
 	})
 }
 
-func (b *Broker) Subscribe(topic string) (uint64, <-chan *Message) {
+func (b *Broker) Subscribe(topic string) (uint64, <-chan Message) {
 	debugf("Bus: subscribe '%s'", topic)
 
 	id := subscriberId.Add(1)
-	ch := make(chan *Message, 10)
+	ch := make(chan Message, 10)
 
 	b.subscribed.Store(id, &Subscriber{receive: ch, topic: topic})
 	return id, ch
 }
 
-func (b *Broker) SubscribeFn(ctx context.Context, topic string, fn func(*Message)) {
+func (b *Broker) SubscribeFn(ctx context.Context, topic string, fn func(Message)) {
 	go func() {
 		id, msgs := b.Subscribe(topic)
 
@@ -120,10 +120,8 @@ func (b *Broker) SubscribeFn(ctx context.Context, topic string, fn func(*Message
 }
 
 func (b *Broker) Unsubscribe(id uint64) {
-	if _, ok := b.subscribed.LoadAndDelete(id); ok {
-		if sub, ok := b.subscribed.Load(id); ok {
-			sub.(*Subscriber).Close()
-		}
+	if sub, ok := b.subscribed.LoadAndDelete(id); ok {
+		sub.(*Subscriber).Close()
 	}
 }
 
@@ -140,7 +138,7 @@ func (b *Broker) UnsubscribeAll() {
 func (b *Broker) Connect(ctx context.Context, o *Broker, ns string) {
 	debugf("Bus: connect onto '%s'", ns)
 
-	o.SubscribeFn(ctx, `.*`, func(msg *Message) {
+	o.SubscribeFn(ctx, `.*`, func(msg Message) {
 		debugf("Bus: forward %d => '%s'", msg.Id, ns)
 
 		var topic string
@@ -150,10 +148,8 @@ func (b *Broker) Connect(ctx context.Context, o *Broker, ns string) {
 			topic = msg.Topic
 		}
 
-		// Create a new message, as we cannot change the passed by
-		// reference original message without changing the message for
-		// other subscribers.
-		fwd := &Message{
+		// Create a new message with the modified topic
+		fwd := Message{
 			Id:    msg.Id,
 			Topic: topic,
 			Data:  msg.Data,

@@ -15,7 +15,7 @@ import (
 var subscriberId atomic.Uint64
 
 type Subscriber struct {
-	receive chan<- *Message
+	receive chan<- Message
 	topic   string
 }
 
