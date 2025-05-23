@@ -28,7 +28,7 @@ func main() {
     presence := &PresenceDetector{Broker: br}
 
     // Receive published messages on a channel.
-    _, ch := presence.Subscribe("changed")
+    ch, _ := presence.Subscribe("changed")
     for msg := range ch {
         ha.SendEvent("presence.changed", msg.Data)
     }

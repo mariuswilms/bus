@@ -17,6 +17,8 @@ import (
 const TopicSeparator string = ":"
 const MaxPendingMessages int = 10
 
+type UnsubscribeFn func()
+
 func NewBroker(ctx context.Context) *Broker {
 	b := &Broker{
 		incoming: make(chan Message, MaxPendingMessages),
@@ -26,10 +28,10 @@ func NewBroker(ctx context.Context) *Broker {
 		for {
 			select {
 			case msg := <-b.incoming:
-				b.NotifyAll(msg)
+				b.notifyAll(msg)
 			case <-ctx.Done():
 				debug("closing broker (received quit)...")
-				b.UnsubscribeAll()
+				b.unsubscribeAll()
 				return
 			}
 		}
@@ -68,7 +70,7 @@ func (b *Broker) accept(msg Message) (ok bool, id uint64) {
 	return ok, msg.Id
 }
 
-func (b *Broker) NotifyAll(msg Message) {
+func (b *Broker) notifyAll(msg Message) {
 	b.subscribed.Range(func(key, value interface{}) bool {
 		sub := value.(*Subscriber)
 		matched, _ := regexp.MatchString(sub.topic, msg.Topic)
@@ -87,45 +89,52 @@ func (b *Broker) NotifyAll(msg Message) {
 	})
 }
 
-func (b *Broker) Subscribe(topic string) (uint64, <-chan Message) {
+// Subscribe subscribes to the given topic, the func will return an unsubscribe function
+// and an open channel where messages for the topic are received.
+func (b *Broker) Subscribe(topic string) (<-chan Message, UnsubscribeFn) {
 	debugf("subscribe '%s'", topic)
 
 	id := subscriberId.Add(1)
 	ch := make(chan Message, 10)
 
 	b.subscribed.Store(id, &Subscriber{receive: ch, topic: topic})
-	return id, ch
+
+	return ch, func() { b.unsubscribe(id) }
 }
 
-func (b *Broker) SubscribeFn(ctx context.Context, topic string, fn func(Message)) {
+func (b *Broker) SubscribeFn(ctx context.Context, topic string, fn func(Message)) UnsubscribeFn {
+	ctx, cancel := context.WithCancel(ctx)
+
 	go func() {
-		id, msgs := b.Subscribe(topic)
+		msgs, unsubscribe := b.Subscribe(topic)
 
 		for {
 			select {
 			case msg, ok := <-msgs:
 				if !ok {
 					debug("stopping subscriber (channel closed)...")
-					b.Unsubscribe(id)
+					unsubscribe()
 					return
 				}
 				fn(msg)
 			case <-ctx.Done():
 				debug("stopping subscriber (received quit)...")
-				b.Unsubscribe(id)
+				unsubscribe()
 				return
 			}
 		}
 	}()
+
+	return func() { cancel() }
 }
 
-func (b *Broker) Unsubscribe(id uint64) {
+func (b *Broker) unsubscribe(id uint64) {
 	if sub, ok := b.subscribed.LoadAndDelete(id); ok {
 		sub.(*Subscriber).Close()
 	}
 }
 
-func (b *Broker) UnsubscribeAll() {
+func (b *Broker) unsubscribeAll() {
 	b.subscribed.Range(func(key, value interface{}) bool {
 		value.(*Subscriber).Close()
 		b.subscribed.Delete(key)
