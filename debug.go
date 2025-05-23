@@ -16,12 +16,13 @@ func isDebugMode() bool {
 
 func debug(v ...interface{}) {
 	if isDebugMode() {
-		log.Print(v...)
+		args := append([]interface{}{"Bus:"}, v...)
+		log.Print(args...)
 	}
 }
 
 func debugf(format string, v ...interface{}) {
 	if isDebugMode() {
-		log.Printf(format, v...)
+		log.Printf("Bus: "+format, v...)
 	}
 }

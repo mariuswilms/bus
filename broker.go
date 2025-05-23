@@ -28,7 +28,7 @@ func NewBroker(ctx context.Context) *Broker {
 			case msg := <-b.incoming:
 				b.NotifyAll(msg)
 			case <-ctx.Done():
-				debug("Closing message broker (received quit)...")
+				debug("Closing broker (received quit)...")
 				b.UnsubscribeAll()
 				return
 			}
@@ -59,10 +59,10 @@ func (b *Broker) Publish(topic string, data interface{}) (bool, uint64) {
 func (b *Broker) accept(msg Message) (ok bool, id uint64) {
 	select {
 	case b.incoming <- msg:
-		debugf("Bus: accept %d '%s'", msg.Id, msg.Topic)
+		debugf("accept %d '%s'", msg.Id, msg.Topic)
 		ok = true
 	default:
-		debugf("Bus: buffer full, discarded %d", msg.Id)
+		debugf("buffer full, discarded %d", msg.Id)
 		ok = false
 	}
 	return ok, msg.Id
@@ -75,20 +75,20 @@ func (b *Broker) NotifyAll(msg Message) {
 		if !matched {
 			return true
 		}
-		debugf("Bus: notify %d", msg.Id)
+		debugf("notify %d", msg.Id)
 
 		select {
 		case sub.receive <- msg:
 			// Subscriber received.
 		default:
-			debugf("Bus: buffer of subscriber %d full, not delivered", key.(uint64))
+			debugf("buffer of subscriber %d full, not delivered", key.(uint64))
 		}
 		return true
 	})
 }
 
 func (b *Broker) Subscribe(topic string) (uint64, <-chan Message) {
-	debugf("Bus: subscribe '%s'", topic)
+	debugf("subscribe '%s'", topic)
 
 	id := subscriberId.Add(1)
 	ch := make(chan Message, 10)
