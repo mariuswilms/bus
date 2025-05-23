@@ -19,8 +19,7 @@ const MaxPendingMessages int = 10
 
 func NewBroker(ctx context.Context) *Broker {
 	b := &Broker{
-		subscribed: make(map[uint64]*Subscriber),
-		incoming:   make(chan *Message, MaxPendingMessages),
+		incoming: make(chan *Message, MaxPendingMessages),
 	}
 
 	go func() {
@@ -42,8 +41,7 @@ func NewBroker(ctx context.Context) *Broker {
 // Broker is the main event bus that services inside the DSK
 // backend subscribe to.
 type Broker struct {
-	sync.RWMutex
-	subscribed map[uint64]*Subscriber
+	subscribed sync.Map
 	incoming   chan *Message
 }
 
@@ -71,13 +69,11 @@ func (b *Broker) accept(msg *Message) (ok bool, id uint64) {
 }
 
 func (b *Broker) NotifyAll(msg *Message) {
-	b.RLock()
-	defer b.RUnlock()
-
-	for id, sub := range b.subscribed {
+	b.subscribed.Range(func(key, value interface{}) bool {
+		sub := value.(*Subscriber)
 		matched, _ := regexp.MatchString(sub.topic, msg.Topic)
 		if !matched {
-			continue
+			return true
 		}
 		debugf("Bus: notify %d", msg.Id)
 
@@ -85,21 +81,19 @@ func (b *Broker) NotifyAll(msg *Message) {
 		case sub.receive <- msg:
 			// Subscriber received.
 		default:
-			debugf("Bus: buffer of subscriber %d full, not delivered", id)
+			debugf("Bus: buffer of subscriber %d full, not delivered", key.(uint64))
 		}
-	}
+		return true
+	})
 }
 
 func (b *Broker) Subscribe(topic string) (uint64, <-chan *Message) {
 	debugf("Bus: subscribe '%s'", topic)
 
-	b.Lock()
-	defer b.Unlock()
-
 	id := subscriberId.Add(1)
 	ch := make(chan *Message, 10)
 
-	b.subscribed[id] = &Subscriber{receive: ch, topic: topic}
+	b.subscribed.Store(id, &Subscriber{receive: ch, topic: topic})
 	return id, ch
 }
 
@@ -126,23 +120,19 @@ func (b *Broker) SubscribeFn(ctx context.Context, topic string, fn func(*Message
 }
 
 func (b *Broker) Unsubscribe(id uint64) {
-	b.Lock()
-	defer b.Unlock()
-
-	if _, ok := b.subscribed[id]; ok {
-		b.subscribed[id].Close()
-		delete(b.subscribed, id)
+	if _, ok := b.subscribed.LoadAndDelete(id); ok {
+		if sub, ok := b.subscribed.Load(id); ok {
+			sub.(*Subscriber).Close()
+		}
 	}
 }
 
 func (b *Broker) UnsubscribeAll() {
-	b.Lock()
-	defer b.Unlock()
-
-	for id := range b.subscribed {
-		b.subscribed[id].Close()
-		delete(b.subscribed, id)
-	}
+	b.subscribed.Range(func(key, value interface{}) bool {
+		value.(*Subscriber).Close()
+		b.subscribed.Delete(key)
+		return true
+	})
 }
 
 // Connect will pass a subscribable messages through into this broker. The ID of the message
