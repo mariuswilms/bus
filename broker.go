@@ -28,7 +28,7 @@ func NewBroker(ctx context.Context) *Broker {
 			case msg := <-b.incoming:
 				b.NotifyAll(msg)
 			case <-ctx.Done():
-				debug("Closing broker (received quit)...")
+				debug("closing broker (received quit)...")
 				b.UnsubscribeAll()
 				return
 			}
@@ -105,13 +105,13 @@ func (b *Broker) SubscribeFn(ctx context.Context, topic string, fn func(Message)
 			select {
 			case msg, ok := <-msgs:
 				if !ok {
-					debug("Stopping subscriber (channel closed)...")
+					debug("stopping subscriber (channel closed)...")
 					b.Unsubscribe(id)
 					return
 				}
 				fn(msg)
 			case <-ctx.Done():
-				debug("Stopping subscriber (received quit)...")
+				debug("stopping subscriber (received quit)...")
 				b.Unsubscribe(id)
 				return
 			}
@@ -136,10 +136,10 @@ func (b *Broker) UnsubscribeAll() {
 // Connect will pass a subscribable messages through into this broker. The ID of the message
 // will stay the same, but the topic will be changed using the provided namespace.
 func (b *Broker) Connect(ctx context.Context, o *Broker, ns string) {
-	debugf("Bus: connect onto '%s'", ns)
+	debugf("connect onto '%s'", ns)
 
 	o.SubscribeFn(ctx, `.*`, func(msg Message) {
-		debugf("Bus: forward %d => '%s'", msg.Id, ns)
+		debugf("forward %d => '%s'", msg.Id, ns)
 
 		var topic string
 		if ns != "" {
