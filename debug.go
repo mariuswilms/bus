@@ -6,7 +6,8 @@
 package bus
 
 import (
-	"log"
+	"fmt"
+	"log/slog"
 	"os"
 )
 
@@ -16,13 +17,12 @@ func isDebugMode() bool {
 
 func debug(v ...any) {
 	if isDebugMode() {
-		args := append([]any{"Bus:"}, v...)
-		log.Print(args...)
+		slog.Debug(fmt.Sprintf("Bus: %s", fmt.Sprint(v...)))
 	}
 }
 
 func debugf(format string, v ...any) {
 	if isDebugMode() {
-		log.Printf("Bus: "+format, v...)
+		slog.Debug(fmt.Sprintf("Bus: %s", fmt.Sprintf(format, v...)))
 	}
 }
