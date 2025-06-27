@@ -14,14 +14,14 @@ func isDebugMode() bool {
 	return os.Getenv("BUS_DEBUG") == "y"
 }
 
-func debug(v ...interface{}) {
+func debug(v ...any) {
 	if isDebugMode() {
-		args := append([]interface{}{"Bus:"}, v...)
+		args := append([]any{"Bus:"}, v...)
 		log.Print(args...)
 	}
 }
 
-func debugf(format string, v ...interface{}) {
+func debugf(format string, v ...any) {
 	if isDebugMode() {
 		log.Printf("Bus: "+format, v...)
 	}

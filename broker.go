@@ -49,7 +49,7 @@ type Broker struct {
 
 // Publish a message for fan-out. Will never block. When the buffer is
 // full the message will be discarded and not delivered.
-func (b *Broker) Publish(topic string, data interface{}) (bool, uint64) {
+func (b *Broker) Publish(topic string, data any) (bool, uint64) {
 	msg := Message{
 		Id:    messageId.Add(1),
 		Topic: topic,
@@ -71,7 +71,7 @@ func (b *Broker) accept(msg Message) (ok bool, id uint64) {
 }
 
 func (b *Broker) notifyAll(msg Message) {
-	b.subscribed.Range(func(key, value interface{}) bool {
+	b.subscribed.Range(func(key, value any) bool {
 		sub := value.(*Subscriber)
 		matched, _ := regexp.MatchString(sub.topic, msg.Topic)
 		if !matched {
@@ -135,7 +135,7 @@ func (b *Broker) unsubscribe(id uint64) {
 }
 
 func (b *Broker) unsubscribeAll() {
-	b.subscribed.Range(func(key, value interface{}) bool {
+	b.subscribed.Range(func(key, value any) bool {
 		value.(*Subscriber).Close()
 		b.subscribed.Delete(key)
 		return true
