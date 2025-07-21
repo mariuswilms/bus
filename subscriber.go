@@ -20,6 +20,9 @@ type Subscriber struct {
 }
 
 func (s *Subscriber) Close() error {
+	if s.receive == nil {
+		return nil
+	}
 	close(s.receive)
 	return nil
 }
