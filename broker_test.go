@@ -49,3 +49,16 @@ func TestBrokerEmbedding(t *testing.T) {
 		t.Errorf("Expected to receive a message, but none was received")
 	}
 }
+
+func TestDoubleCloseSubscriber(t *testing.T) {
+	// Create a subscriber directly
+	ch := make(chan Message, 10)
+	sub := &Subscriber{receive: ch, topic: "test"}
+
+	// Call Close multiple times - this should NOT panic with the fix
+	sub.Close()
+	sub.Close() // This should NOT panic with the atomic fix
+
+	// If we get here, the fix is working
+	t.Log("Fix is working - no panic occurred")
+}
